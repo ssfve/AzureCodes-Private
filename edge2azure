@@ -1,0 +1,1029 @@
+import thread
+import time,os,sys
+import queue
+
+import logging
+import configparser
+import requests
+import xml.etree.ElementTree as ET
+
+import threading
+import rethinkdb as r
+import random
+
+class GenericSensor(object):
+    """ Keep common attributes for snesor, and provides generic method for different sensor.
+
+    Args:
+        None
+
+    Attributes:
+        __event_id (str): uuid value in string for uniquely identify an event in sensor
+        attr_2_column_mapping (dict): Stands for mapping between instance attribute and (column name in Cassandra
+         table, data type)
+        karrios_data_points_list (list): a list of data points (dict) in Karrios data point:
+        for example: one data point is {'timestamp': 1456939614201L, 'name': 'raw_gy_steps_ascended', 'value': 4408,
+        'tags': {'user_id': u'vincent.planat@hpe.com', 'event_type': u'altimeter',
+        'event_id': u'664df9f0-f838-4059-8cf2-470586a3f2af', 'training_mode': u'SITTING', 'device_type': u'msband2',
+        'device_id': u'b81e905908354542'}}
+    """
+
+    def __init__(self):
+        self.__event_id = ""
+        self.__device_type = ""
+        self.__device_id = ""
+        self.__event_type = ""
+        self.__timestamp = ""
+        self.__user_id = ""
+        self.__training_mode = ""
+        self.karrios_data_points_list = []
+        self.attr_2_column_mapping = dict()
+        self.attr_2_column_mapping["__event_id"] = ("event_id", "uuid")
+        self.attr_2_column_mapping["__device_type"] = ("device_type", "text")
+        self.attr_2_column_mapping["__device_id"] = ("device_id", "text")
+        self.attr_2_column_mapping["__event_type"] = ("event_type", "text")
+        self.attr_2_column_mapping["__timestamp"] = ("time_stamp", "bigint")
+        self.attr_2_column_mapping["__user_id"] = ("user_id", "text")
+        self.attr_2_column_mapping["__training_mode"] = ("training_mode", "text")
+
+    def get_sensor(self):
+        """Return attributes of the instance
+        Returns:
+            str
+        """
+        pass
+
+    def set_sensor(self, **kwargs):
+        """Set attributes of the instance
+            Args:
+                **kwargs(dict): a dictionary of argument key and value pairs
+        Returns:
+            None
+        """
+        self.__event_id = kwargs.get("eventId", "977c9b9a-9a02-4e1e-830b-7fdbc754f987")
+        self.__device_type = kwargs.get("deviceType", "NA")
+        self.__device_id = kwargs.get("deviceid", "NA")
+        self.__event_type = kwargs.get("eventtype", "NA")
+        self.__timestamp = kwargs.get("timestamp", "NA")
+        self.__user_id = kwargs.get("userid", "NA")
+        self.__training_mode = kwargs.get("trainingMode", "NA")
+        
+		def issue_send_IoT_hub(self, json_dumps):
+        """ Set attributes of the instance
+            Args:
+              	json_dumps(library function): reference to json.dumps
+        Returns:
+            None
+				"""	
+				json_object = dict()
+        
+        # Loop through attributes in the self object and generate INSERT query and issue the query
+        for key in self.__dict__.keys():
+            # Only get attributes of self object for polymorphism
+            # if key.startswith("_" + self.__class__.__name__):
+            if key.startswith("_" ):
+                # Only get attributes starting with "__" in instance
+                instance_attribute_name = key.replace("_" + self.__class__.__name__, "").replace("_GenericSensor", "")      
+								#print instance_attribute_name
+								instance_attribute_key = self.attr_2_column_mapping[instance_attribute_name][0]
+								#print instance_attribute_key
+								instance_attribute_value = self.__dict__[key]
+								#print instance_attribute_value
+								json_object[instance_attribute_key] = instance_attribute_value 
+        
+        json_object[iothub_msg_type] = "edge2azure" 
+
+        message = json_dumps(json_object)
+        answer = d2cMsgSender.sendD2CMsg(deviceId, message)
+
+class Hdhld(GenericSensor):
+    def __init__(self):
+        super(Hdhld, self).__init__()
+        self.__handheld_activity = None
+        self.__handheld_activity_confidence = None
+        self.__handhel_lat = None
+        self.__handhel_long = None
+        self.attr_2_column_mapping["__handheld_activity"] = ("handheld_activity", "text")
+        self.attr_2_column_mapping["__handheld_activity_confidence"] \
+            = ("handheld_activity_confidence", "int")
+        self.attr_2_column_mapping["__handhel_lat"] = ("handhel_lat", "float")
+        self.attr_2_column_mapping["__handhel_long"] = ("handhel_long", "float")
+
+    def get_sensor(self):
+        print ("eventId: %s, deviceType: %s, deviceid: %s, eventtype: %s, " \
+               "timestamp: %s, userid: %s, trainingMode: %s, handheldActivity: %s, " \
+               "handheldActivityConfidence: %d, handhelLat %f, handhel_long %f" % (
+                   self.__event_id, self.__device_type, self.__device_id,
+                   self.__event_type, self.__timestamp, self.__user_id,
+                   self.__training_mode, self.__handheld_activity,
+                   self.__handheld_activity_confidence,
+                   self.__handhel_lat,
+                   self.__handhel_long))
+
+    def set_sensor(self, **kwargs):
+        super(Hdhld, self).set_sensor(**kwargs)
+        self.__handheld_activity = kwargs.get("handheldActivity", "NA")
+        self.__handheld_activity_confidence = kwargs.get("handheldActivityConfidence", 0)
+        self.__handhel_lat = kwargs.get("handhelLat", 0.0)
+        self.__handhel_long = kwargs.get("handhelLong", 0.0)
+
+
+class Accelerometer(GenericSensor):
+    def __init__(self):
+        super(Accelerometer, self).__init__()
+        self.__x = None
+        self.__y = None
+        self.__z = None
+        self.attr_2_column_mapping["__x"] = ("x", "float")
+        self.attr_2_column_mapping["__y"] = ("y", "float")
+        self.attr_2_column_mapping["__z"] = ("z", "float")
+    
+    def set_sensor(self, **kwargs):
+        super(Accelerometer, self).set_sensor(**kwargs)
+        self.__x = kwargs.get("x", None)
+        self.__y = kwargs.get("y", None)
+        self.__z = kwargs.get("z", None)
+
+
+class Gyroscope(GenericSensor):
+    def __init__(self):
+        super(Gyroscope, self).__init__()
+        self.__x = None
+        self.__y = None
+        self.__z = None
+        self.attr_2_column_mapping["__x"] = ("x", "float")
+        self.attr_2_column_mapping["__y"] = ("y", "float")
+        self.attr_2_column_mapping["__z"] = ("z", "float")
+
+    def set_sensor(self, **kwargs):
+        super(Gyroscope, self).set_sensor(**kwargs)
+        self.__x = kwargs.get("x", None)
+        self.__y = kwargs.get("y", None)
+        self.__z = kwargs.get("z", None)
+
+
+class Altimeter(GenericSensor):
+    def __init__(self):
+        super(Altimeter, self).__init__()
+        self.__flights_ascended = None
+        self.__flights_descended = None
+        self.__rate = None
+        self.__stepping_gain = None
+        self.__stepping_loss = None
+        self.__steps_ascended = None
+        self.__steps_descended = None
+        self.__total_gain = None
+        self.__total_loss = None
+        self.attr_2_column_mapping["__flights_ascended"] = ("flights_ascended", "int")
+        self.attr_2_column_mapping["__flights_descended"] = ("flights_descended", "int")
+        self.attr_2_column_mapping["__rate"] = ("rate", "float")
+        self.attr_2_column_mapping["__stepping_gain"] = ("stepping_gain", "int")
+        self.attr_2_column_mapping["__stepping_loss"] = ("stepping_loss", "int")
+        self.attr_2_column_mapping["__steps_ascended"] = ("steps_ascended", "int")
+        self.attr_2_column_mapping["__steps_descended"] = ("steps_descended", "int")
+        self.attr_2_column_mapping["__total_gain"] = ("total_gain", "int")
+        self.attr_2_column_mapping["__total_loss"] = ("total_loss", "int")
+
+    def set_sensor(self, **kwargs):
+        super(Altimeter, self).set_sensor(**kwargs)
+        self.__flights_ascended = kwargs.get("flightsAscended", None)
+        self.__flights_descended = kwargs.get("flightsDescended", None)
+        self.__rate = kwargs.get("rate", None)
+        self.__stepping_gain = kwargs.get("steppingGain", None)
+        self.__stepping_loss = kwargs.get("steppingLoss", None)
+        self.__steps_ascended = kwargs.get("stepsAscended", None)
+        self.__steps_descended = kwargs.get("stepsDescended", None)
+        self.__total_gain = kwargs.get("totalGain", None)
+        self.__total_loss = kwargs.get("totalLoss", None)
+
+
+class AmbientLight(GenericSensor):
+    def __init__(self):
+        super(AmbientLight, self).__init__()
+        self.__brightness = None
+        self.attr_2_column_mapping["__brightness"] = ("brightness", "int")
+
+    def set_sensor(self, **kwargs):
+        super(AmbientLight, self).set_sensor(**kwargs)
+        self.__brightness = kwargs.get("brightness", None)
+
+
+class Barometer(GenericSensor):
+    def __init__(self):
+        super(Barometer, self).__init__()
+        self.__temperature = None
+        self.__air_pressure = None
+        self.attr_2_column_mapping["__temperature"] = ("temperature", "float")
+        self.attr_2_column_mapping["__air_pressure"] = ("air_pressure", "float")
+
+    def set_sensor(self, **kwargs):
+        super(Barometer, self).set_sensor(**kwargs)
+        self.__temperature = kwargs.get("temperature", None)
+        self.__air_pressure = kwargs.get("airPressure", None)
+
+
+class Calories(GenericSensor):
+    def __init__(self):
+        super(Calories, self).__init__()
+        self.__calories = None
+        self.attr_2_column_mapping["__calories"] = ("calories", "int")
+
+    def set_sensor(self, **kwargs):
+        super(Calories, self).set_sensor(**kwargs)
+        self.__calories = kwargs.get("calories", None)
+
+
+class Distance(GenericSensor):
+    def __init__(self):
+        super(Distance, self).__init__()
+        self.__current_motion = None
+        self.__pace = None
+        self.__speed = None
+        self.__total_distance = None
+        self.attr_2_column_mapping["__current_motion"] = ("current_motion", "int")
+        self.attr_2_column_mapping["__pace"] = ("pace", "float")
+        self.attr_2_column_mapping["__speed"] = ("speed", "float")
+        self.attr_2_column_mapping["__total_distance"] = ("total_distance", "int")
+
+    def set_sensor(self, **kwargs):
+        super(Distance, self).set_sensor(**kwargs)
+        self.__current_motion = kwargs.get("currentMotion", None)
+        self.__pace = kwargs.get("pace", None)
+        self.__speed = kwargs.get("speed", None)
+        self.__total_distance = kwargs.get("totalDistance", None)
+
+
+class UV(GenericSensor):
+    def __init__(self):
+        super(UV, self).__init__()
+        self.__index = None
+        self.attr_2_column_mapping["__index"] = ("index_uv", "int")
+
+    def set_sensor(self, **kwargs):
+        super(UV, self).set_sensor(**kwargs)
+        self.__index = kwargs.get("index", None)
+
+
+class SkinTemperature(GenericSensor):
+    def __init__(self):
+        super(SkinTemperature, self).__init__()
+        self.__temperature = None
+        self.attr_2_column_mapping["__temperature"] = ("temperature", "float")
+
+    def set_sensor(self, **kwargs):
+        super(SkinTemperature, self).set_sensor(**kwargs)
+        self.__temperature = kwargs.get("temperature", None)
+
+
+class GSR(GenericSensor):
+    def __init__(self):
+        super(GSR, self).__init__()
+        self.__resistance = None
+        self.attr_2_column_mapping["__resistance"] = ("resistance", "int")
+
+    def set_sensor(self, **kwargs):
+        super(GSR, self).set_sensor(**kwargs)
+        self.__resistance = kwargs.get("resistance", None)
+
+
+class HeartRate(GenericSensor):
+    def __init__(self):
+        super(HeartRate, self).__init__()
+        self.__rate = None
+        self.__quality = None
+        self.attr_2_column_mapping["__rate"] = ("rate", "int")
+        self.attr_2_column_mapping["__quality"] = ("quality", "int")
+
+    def set_sensor(self, **kwargs):
+        super(HeartRate, self).set_sensor(**kwargs)
+        self.__rate = kwargs.get("rate", None)
+        self.__quality = kwargs.get("quality", None)
+
+
+class RRInterval(GenericSensor):
+    def __init__(self):
+        super(RRInterval, self).__init__()
+        self.__interval = None
+        self.attr_2_column_mapping["__interval"] = ("interval", "float")
+
+    def set_sensor(self, **kwargs):
+        super(RRInterval, self).set_sensor(**kwargs)
+        self.__interval = kwargs.get("interval", None)
+
+
+class SensorFactory(object):
+    def produce_sensor_object(self, sensor_type_name):
+        """Return sensor object based on sensor type
+            Args:
+                sensor_type_name (str): validate type name of sensors like hdhld, accelerometer
+        Returns:
+            sensor object
+        """
+        if sensor_type_name.strip().lower() == "hdhld":
+            return Hdhld()
+        elif sensor_type_name.strip().lower() == "accelerometer" or sensor_type_name.strip().lower() == "accel":
+            return Accelerometer()
+        elif sensor_type_name.strip().lower() == "gyroscope":
+            return Gyroscope()
+        elif sensor_type_name.strip().lower() == "altimeter":
+            return Altimeter()
+        elif sensor_type_name.strip().lower() == "ambientlight":
+            return AmbientLight()
+        elif sensor_type_name.strip().lower() == "barometer":
+            return Barometer()
+        elif sensor_type_name.strip().lower() == "calorie":
+            return Calories()
+        elif sensor_type_name.strip().lower() == "distance":
+            return Distance()
+        elif sensor_type_name.strip().lower() == "uv":
+            return UV()
+        elif sensor_type_name.strip().lower() == "skintemperature":
+            return SkinTemperature()
+        elif sensor_type_name.strip().lower() == "gsr":
+            return GSR()
+        elif sensor_type_name.strip().lower() == "heartrate":
+            return HeartRate()
+        elif sensor_type_name.strip().lower() == "rrinterval":
+            return RRInterval()
+        else:
+            return None
+
+
+class Edge2AzureWorker(threading.Thread):
+
+    ourQueue    = queue.PriorityQueue()
+    ourQueueIDminiNotPrio = 0  # La valeur de priorite de seuil dans la queue pour les tweets non prioritaires. si la prio est >, c'est que le tweet n'est pas prio
+    ourThreads  = list()
+    ourStats    = dict()
+    ourStatsLock = threading.Lock()
+
+    @staticmethod
+    def initProcessQueue(queue_of_obj):
+        Edge2AzureWorker.ourThreads.clear()
+        Edge2AzureWorker.ourThreads      = list()
+        Edge2AzureWorker.ourQueue   = queue_of_obj
+        Edge2AzureWorker.ourStats        = dict({'nb.img.to.analyze': queue_of_obj.qsize(),
+                         'nb.img.bypass':0,
+                         'nb.img.analyzed' : 0,
+                         'nb.img.nothing.found':0,
+                         'nb.img.matching':0,
+                         'nb.img.error':0,
+                         'starting.perf_counter' : 0.0,
+                         'duration.sec' : 0,
+                         'nb.img.analyzed.per.sec':0.0})
+    @staticmethod
+    def closeProcessQueue():
+        Edge2AzureWorker.ourThreads.clear()
+        Edge2AzureWorker.ourThreads = list()
+        Edge2AzureWorker.ourQueue     = queue.PriorityQueue()
+
+    @staticmethod
+    def createThread(dict_params_rdb=None, dict_params_analyis=None):
+        new_th =  Edge2AzureWorker(dict_params_rdb, dict_params_analyis)
+        new_th.start()
+        if len(Edge2AzureWorker.ourThreads) == 0 :
+            Edge2AzureWorker.ourStats['starting.perf_counter'] = time.perf_counter()
+        Edge2AzureWorker.ourThreads.append(new_th)
+    
+    @staticmethod
+    def waitFinished():
+        Edge2AzureWorker.ourQueue.join()         # Attente que la queue soit vide
+        for t in Edge2AzureWorker.ourThreads:    # Attente que tous les threads soient finis
+            t.join()
+        Edge2AzureWorker.ourStats['duration.sec'] = time.perf_counter()-Edge2AzureWorker.ourStats['starting.perf_counter']
+        Edge2AzureWorker.ourStats['nb.img.analyzed.per.sec'] = (Edge2AzureWorker.ourStats['nb.img.nothing.found']+Edge2AzureWorker.ourStats['nb.img.matching']+Edge2AzureWorker.ourStats['nb.img.error']) / Edge2AzureWorker.ourStats['duration.sec']
+
+    def __init__(self, dict_params_rdb=None, dict_params_analyis=None):
+        super(Edge2AzureWorker, self).__init__(group=None, target=None, daemon=False)  # name=None
+        self.myTLock            = threading.Lock()
+        self.isWorkingFlag      = False
+        self.Abandonner         = False
+        self.my_perf_starttime  = 0.0
+        self.my_result_Status   = self.my_result_StatusDetails = ""
+        self.my_configRDB       = dict_params_rdb
+        self.my_configAnalysis  = dict_params_analyis
+        self.my_rdb             = None  # Le pointeur RDB
+        self.my_current_state   = ''
+        self.my_raw_tweet       = dict()
+        self.my_image_request   = None    # requests  # Contiendra l'image en mode raw data dans la RAM req.content
+        self.my_raw_analysis    = ''      # contient le retour brut du serveur d'images (string XML)
+        self.my_img_analysis    = dict()  # contient les resultats de l'analyse d'image
+
+        self.my_input_DataLocationURL  = ''
+        self.my_input_DataSource       = ''
+        self.my_input_DateCreation     = ''
+        self.my_input_DataSourceID     = 0
+        self.my_input_DataID           = 0
+        self.my_input_DataType         = ''
+        self.my_input_DataCategory1    = ''
+        self.my_input_DataCategory2    = ''
+        self.my_input_ProcUniqName     = ''
+
+        self.my_input_TwUserScreenName = ''
+        self.my_input_TwText           = ''
+        self.my_input_TwSentimentFlag  = ''
+        self.my_input_TwSentimentScore = ''
+        self.my_input_TwLongitude      = ''
+        self.my_input_TwLatitude       = ''
+
+        self.my_result_Status               = self.my_result_StatusDetails = ''
+        self.my_result_DataType             = self.my_input_DataType
+        self.my_result_local_filename       = ''
+        self.my_result_local_file_locator   = None
+
+        # self.my_result_ObjRecoName          = ''
+        # self.my_result_ObjRecoUniqName      = ''
+        # self.my_result_ObjRecoConfidence    = '0'
+        #
+        # self.my_result_PersonNumber         = 0
+        # self.my_result_PersonEthnicity      = ''
+        # self.my_result_PersonAge            = ''
+        # self.my_result_PersonGender         = ''
+        # self.my_result_PersonEyeOpen        = ''
+        # self.my_result_PersonExpression     = ''
+        # self.my_result_PersonSpectacles     = ''
+        # self.my_result_PersonClothingColor  = ''
+        #
+        # self.my_result_ImgPropNbPixels  = 0
+        # self.my_result_ImgPropColored   = ''
+        # self.my_result_ImgPropSkinCoef  = '0'
+        # self.my_result_ImgPropPrn       = ''
+
+    def isWorking(self):
+        self.myTLock.acquire(blocking=True,timeout=60)
+        retour = self.isWorkingFlag
+        self.myTLock.release()
+        return retour
+    def setIsWorkingFlag(self, NewStatus=False):
+        self.myTLock.acquire(blocking=True,timeout=60)
+        self.isWorkingFlag = NewStatus
+        self.myTLock.release()
+    def abandonOrdered(self):
+        self.myTLock.acquire(blocking=True,timeout=60)
+        retour = self.Abandonner
+        self.myTLock.release()
+        return retour
+    def abandonner(self):
+        self.myTLock.acquire(blocking=True,timeout=60)
+        self.Abandonner = True
+        self.myTLock.release()
+
+    def assignTweetFromRDB(self, pTweetObject):
+        self.my_raw_tweet       = pTweetObject
+        self.my_image_request   = None # requests  # Contiendra l'image en mode raw data dans la RAM req.content
+        self.my_raw_analysis    = ''
+        self.my_img_analysis     = dict()
+
+        # Devel la gestion du 0.02 % tweets qui ont plusieurs images ??
+        self.my_input_DataLocationURL  = pTweetObject['media_urls'][0]       # On ne prend que la 1ere image du tweet
+        self.my_input_DataSource       = 'twitter'
+        self.my_input_DateCreation     = pTweetObject['ts_creation']  # .strftime("%Y-%m-%d %H:%M:%S")
+        self.my_input_DataSourceID     = int(pTweetObject['id'])
+        self.my_input_DataID           = int(2222)       # C'etait la cle prim generee par vertica
+        self.my_input_DataType         = 'media'
+        self.my_input_DataCategory1    = pTweetObject.get('tag1', '')
+        self.my_input_DataCategory2    = pTweetObject.get('tag2', '')
+        self.my_input_ProcUniqName     = 'image.analysis.operator'
+
+        self.my_input_TwUserScreenName = pTweetObject['user_screen_name']
+        self.my_input_TwText           = pTweetObject['text']
+        self.my_input_TwSentimentFlag  = pTweetObject['sentiment_flag']
+        self.my_input_TwSentimentScore = pTweetObject['sentiment_score']
+        self.my_input_TwLongitude      = pTweetObject['tw_geo_longi']
+        self.my_input_TwLatitude       = pTweetObject['tw_geo_lati']
+
+        self.my_result_Status               = self.my_result_StatusDetails = ''
+        self.my_result_DataType             = self.my_input_DataType
+        self.my_result_local_filename       = ''
+        self.my_result_local_file_locator   = None # Path
+
+        # self.my_result_ObjRecoName          = ''
+        # self.my_result_ObjRecoUniqName      = ''
+        # self.my_result_ObjRecoConfidence    = '0'
+        #
+        # self.my_result_PersonNumber         = 0
+        # self.my_result_PersonEthnicity      = ''
+        # self.my_result_PersonAge            = ''
+        # self.my_result_PersonGender         = ''
+        # self.my_result_PersonEyeOpen        = ''
+        # self.my_result_PersonExpression     = ''
+        # self.my_result_PersonSpectacles     = ''
+        # self.my_result_PersonClothingColor  = ''
+        #
+        # self.my_result_ImgPropNbPixels  = 0
+        # self.my_result_ImgPropColored   = ''
+        # self.my_result_ImgPropSkinCoef  = '0'
+        # self.my_result_ImgPropPrn       = ''
+
+    def _taskCheckInputData(self):
+        """ Make preliminary checks on variables
+        :return: True (OK) or False
+        """
+        #### Test on URL
+        if self.my_result_Status=='' and len(self.my_input_DataLocationURL) < 4:
+            self.my_result_DataType         = 'unknown'
+            self.my_result_Status           = 'error-badurl'
+            self.my_result_StatusDetails    = 'url invalid'
+        #### Test on DataType
+        elif self.my_result_DataType != 'media' and self.my_result_DataType != 'picture':
+            self.my_result_DataType         = 'unknown'
+            self.my_result_Status           = 'error-badurl'
+            self.my_result_StatusDetails    = 'ContentType not managed'
+        #### Test on DataSource
+        elif self.my_input_DataSource != 'twitter':
+            self.my_result_Status           = 'error-badurl'
+            self.my_result_StatusDetails    = 'Source not managed'
+        #### Test on FileExtension
+        else:
+            tmpFileExtension = self.my_input_DataLocationURL[self.my_input_DataLocationURL.rfind('.'):]
+            if tmpFileExtension not in ['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.tif']:
+                self.my_result_DataType         = 'unknown'
+                self.my_result_Status           = 'error-badurl'
+                self.my_result_StatusDetails    = 'Media not managed ' + tmpFileExtension
+            else:
+                self.my_result_DataType = 'picture'
+
+        logging.log(logging.DEBUG-2, "OBJECT -> _taskCheckInputData")
+        if self.my_result_Status=='':
+            return True
+        else:
+            return False
+
+    def _taskDownloadImage(self):
+        perf2 = time.perf_counter()
+        self.my_img_analysis['img.size.in.bytes'] = 0
+        self.my_img_analysis['img.url'] = self.my_input_DataLocationURL
+        try :
+            self.my_image_request = requests.get(url=self.my_input_DataLocationURL, timeout=int(self.my_configAnalysis.get('timeout.secondes.http.web.download', '5')))
+            if self.my_image_request.status_code != 200 :
+                self.my_result_Status           = 'error-download'
+                self.my_result_StatusDetails    = 'Download HTTP Error %d' % self.my_image_request.status_code
+            else:
+                self.my_img_analysis['img.size.in.bytes'] = len(self.my_image_request.content)
+        except TimeoutError :
+            self.my_result_Status           = 'error-download'
+            self.my_result_StatusDetails    = 'Download Timeout'
+        except Exception as e :
+            self.my_result_Status           = 'error-download'
+            self.my_result_StatusDetails    = 'Download Exception %s' % str(e)
+
+        logging.debug('Downloaded Img %0.1f KB | %0.2f sec | %s' % (self.my_img_analysis['img.size.in.bytes']/1024, time.perf_counter()-perf2, self.my_result_Status))
+        if self.my_result_Status=='':
+            return True
+        else:
+            return False
+
+    def _taskSendImageToAnalysis(self):
+        tmpSize = 0 if not self.my_img_analysis.get('img.size.in.bytes') else int(self.my_img_analysis.get('img.size.in.bytes'))
+        if tmpSize < int(self.my_configAnalysis.get('image.minimum.size.in.bytes')) :
+            logging.debug('Image too small, not sent to analyze')
+            self.my_result_Status           = 'bypass'
+            self.my_result_StatusDetails    = 'Image too small'
+        elif tmpSize > int(self.my_configAnalysis.get('image.maximum.size.in.bytes')) :
+            logging.debug('Image too big, not sent to analyze')
+            self.my_result_Status           = 'bypass'
+            self.my_result_StatusDetails    = 'Image too large'
+        else :
+            perf3 = time.perf_counter()
+            params={'Synchronous': 'true',
+                    'TaskSections': self.my_configAnalysis.get('image.srv.tasknames', 'DemoFaceAnalysis,DemoSkinProperties,DemoLogoReco,DemoClothing'),
+                    'ResponseFormat' : 'XML'}  #json est possible ici
+            thefiles = {'ImageData': self.my_image_request.content }
+            theurl=self.my_configAnalysis.get('image.srv.url','') + '?action=Analyze'
+            try :
+                req2 = requests.post(url=theurl, data=params, files=thefiles, timeout=int(self.my_configAnalysis.get('timeout.secondes.image.processing', '60')))
+                if req2.status_code != 200 :
+                    self.my_result_Status           = 'error-analysis'
+                    self.my_result_StatusDetails    = 'Analysis HTTP Error %d' % req2.status_code
+                else:
+                    try : # -- RESULT ANALYSE   # JSON : self.my_raw_analysis =  json.loads(req2.text)
+                        self.my_raw_analysis = req2.text
+                    except Exception as e :
+                        self.my_result_Status           = 'error-analysis'
+                        self.my_result_StatusDetails    = 'Exception casting result of analysis %s' % str(e)
+            except TimeoutError :
+                self.my_result_Status           = 'error-analysis'
+                self.my_result_StatusDetails    = 'Analysis Timeout'
+            except Exception as e :
+                self.my_result_Status           = 'error-analysis'
+                if 'Read timed out' in str(e) :
+                    self.my_result_StatusDetails    = 'Analysis Timeout'
+                else:
+                    self.my_result_StatusDetails    = 'Analysis Exception %s' % str(e)
+
+            # TODO : On peut reboucler ici en cas d'erreur avec le SErver d'images
+
+            self.my_img_analysis['analysis.duration.sec'] = time.perf_counter()-perf3
+            logging.debug('Img Analyzed | %0.2f sec | %s' % (self.my_img_analysis['analysis.duration.sec'], self.my_result_Status))
+
+        if self.my_result_Status=='':
+            return True
+        else:
+            return False
+
+    def _taskInterpreteResultXML(self):
+        if self.my_result_Status == '':
+            root = ET.fromstring(self.my_raw_analysis)
+            if not(root.findtext("./action", default='') == 'ANALYZE' and root.findtext("./response", default='') == 'SUCCESS'):
+                logging.error("ImageServer : Answer not understood (often monochrome for clothes)") #  % self.my_raw_analysis)
+                self.my_result_Status           = 'error-analysis'
+                self.my_result_StatusDetails    = 'Answer of image server not understood'
+            else:
+                if root.find("./responsedata/page") is None:
+                    logging.error("ImageServer : finished but no answer for the tasks executed")
+                    self.my_result_Status           = 'error-analysis'
+                    self.my_result_StatusDetails    = 'Results not found in image server answer'
+                else:
+                    ### Parsing sur les resultats de chaque task du server
+                    self.my_result_Status = 'done'  # at least processed, maybe surcharge if something matched
+                    for tmpElem in root.find('./responsedata/page'):
+                        #--- <pagesize> : containing the size of the image
+                        if tmpElem.tag == 'pagesize':
+                            # Ce flag est systematiquement remonte, si on tague "matching", toutes les images deviennent matching
+                            self.my_img_analysis['img.width'] = int(tmpElem.findtext('./width', default='0'))
+                            self.my_img_analysis['img.height'] = int(tmpElem.findtext('./height', default='0'))
+                            # self.my_result_ImgPropNbPixels = int(tmpElem.findtext('./width', default='0')) * int(tmpElem.findtext('./height', default='0'))
+
+                        #--- <persontask> + clothing task
+                        elif tmpElem.tag == 'persontask' and tmpElem.find('./person/clothing/colors/color') is not None:
+                            # print('----------------- PERSON + CLOTHING TASK\n%s-----------------' % self.my_raw_analysis)
+                            self.my_result_Status = 'matching'
+                            if not self.my_img_analysis.get('persons.clothes') :
+                                self.my_img_analysis['persons.clothes'] = list()
+                            for objet in tmpElem.findall('./person') :
+                                newObj = dict()
+                                newObj['color']  = objet.findtext('./clothing/colors/color', default='')
+                                newObj['weight'] = int(objet.findtext('./facelocation/weight', default='0'))
+                                self.my_img_analysis['persons.clothes'].append(newObj)
+                            # self.my_img_analysis['person.clothing.color'] = tmpElem.findtext('./person/clothing/colors/color', default='')
+                            # self.my_img_analysis['person.clothing.weight'] = int(tmpElem.findtext('./person/facelocation/weight', default='0'))
+                            # # self.my_result_PersonClothingColor = tmpElem.findtext('./person/clothing/colors/color', default='')
+
+                        #--- <persontask> + Face Analysis : Demographics + Face State
+                        elif tmpElem.tag == 'persontask' and tmpElem.find('./person/facedemographics') is not None:
+                            # print('----------------- PERSON + DEMOGRAPHICS TASK\n%s-----------------' % self.my_raw_analysis)
+                            self.my_result_Status = 'matching'
+                            if not self.my_img_analysis.get('persons.demographics') :
+                                self.my_img_analysis['persons.demographics'] = list()
+                            for objet in tmpElem.findall('./person') :
+                                newObj = dict()
+                                newObj['ethnicity']  = objet.findtext('./facedemographics/ethnicity', default='')
+                                newObj['age']  = objet.findtext('./facedemographics/age', default='')
+                                newObj['gender']  = objet.findtext('./facedemographics/gender', default='')
+                                newObj['face.expression']  = objet.findtext('./facestate/expression', default='')
+                                newObj['face.eye.open']  = objet.findtext('./facestate/eyesopen', default='')
+                                newObj['face.spectacles']  = objet.findtext('./facestate/spectacles', default='')
+                                self.my_img_analysis['persons.demographics'].append(newObj)
+                            # self.my_img_analysis['person.ethnicity']    = tmpElem.findtext('./person/facedemographics/ethnicity', default='')
+                            # self.my_img_analysis['person.age']          = tmpElem.findtext('./person/facedemographics/age', default='')
+                            # self.my_img_analysis['person.gender']       = tmpElem.findtext('./person/facedemographics/gender', default='')
+                            # # self.my_result_PersonEthnicity = tmpElem.findtext('./person/facedemographics/ethnicity', default='')
+                            # # self.my_result_PersonAge       = tmpElem.findtext('./person/facedemographics/age', default='')
+                            # # self.my_result_PersonGender    = tmpElem.findtext('./person/facedemographics/gender', default='')
+                            #
+                            # # On en profite pour compter le nb de champs person
+                            # self.my_img_analysis['person.nb.persons'] = len(tmpElem.find('./person'))
+                            # # self.my_result_PersonNumber    = len(tmpElem.find('./person'))
+                            # ## <persontask> + Face Analysis : Face State
+                            #
+                            # if tmpElem.find('./person/facestate') is not None:
+                            #     self.my_img_analysis['person.expression']   = tmpElem.findtext('./person/facestate/expression', default='')
+                            #     self.my_img_analysis['person.eye.open']     = tmpElem.findtext('./person/facestate/eyesopen', default='')
+                            #     self.my_img_analysis['person.spectacles']   = tmpElem.findtext('./person/facestate/spectacles', default='')
+                            #     # self.my_result_PersonExpression = tmpElem.findtext('./person/facestate/expression', default='')
+                            #     # self.my_result_PersonEyeOpen    = tmpElem.findtext('./person/facestate/eyesopen', default='')
+                            #     # self.my_result_PersonSpectacles = tmpElem.findtext('./person/facestate/spectacles', default='')
+
+                        ## <objecttask> : Object Recognition, contient 1 <taskname> puis des <object> <object>
+                        elif tmpElem.tag == 'objecttask' and tmpElem.find('./object/name') is not None:
+                            # print('----------------- OBJECT TASK\n%s-----------------' % self.my_raw_analysis)
+                            self.my_result_Status = 'matching'
+                            # self.my_img_analysis['object.name']       = tmpElem.findtext('./object/name', default='')
+                            # self.my_img_analysis['object.uniquename'] = tmpElem.findtext('./object/uniquename', default='')
+                            # self.my_img_analysis['object.confidence'] = tmpElem.findtext('./object/confidence', default='0')
+                            # # self.my_result_ObjRecoName       = tmpElem.findtext('./object/name', default='')
+                            # # self.my_result_ObjRecoUniqName   = tmpElem.findtext('./object/uniquename', default='')
+                            # # self.my_result_ObjRecoConfidence = tmpElem.findtext('./object/confidence', default='0')
+                            if not self.my_img_analysis.get('objects.recognized') :
+                                self.my_img_analysis['objects.recognized'] = list()
+                            for objet in tmpElem.findall('./object') :
+                                newObj = dict()
+                                newObj['name']       = objet.findtext('./name', default='')
+                                newObj['uniquename'] = objet.findtext('./uniquename', default='')
+                                newObj['confidence'] = int(objet.findtext('./confidence', default='0'))
+                                self.my_img_analysis['objects.recognized'].append(newObj)
+
+                        ## <imagepropertiestask> : Contient 1 <taskname> et <imageproperties>
+                        elif tmpElem.tag == 'imagepropertiestask' and tmpElem.find('./imageproperties/colored') is not None:
+                            # Ce flag est systematiquement remonte, si on tague "matching", toutes les images deviennent matching
+                            # self.my_result_Status = 'matching'
+                            self.my_img_analysis['img.colored']  = tmpElem.findtext('./object/colored', default='false')
+                            self.my_img_analysis['img.skinprop'] = int(tmpElem.findtext('./object/skinprop', default='0'))
+                            self.my_img_analysis['img.porno']    = tmpElem.findtext('./object/pornographic', default='false')
+                            # self.my_result_ImgPropColored    = tmpElem.findtext('./imageproperties/colored', default='')
+                            # self.my_result_ImgPropSkinCoef   = tmpElem.findtext('./imageproperties/skinprop', default='0')
+                            # self.my_result_ImgPropPrn        = tmpElem.findtext('./imageproperties/pornographic', default='')
+        return True
+
+    def _taskUpdateRDBwithResult(self, new_status=666, new_status_details=''):
+        retour = True
+        fields2update = {'status' : new_status,
+                         'status_details' : new_status_details,
+                         'image_analysis' : self.my_img_analysis}
+        # -- Connection a RDB
+        try :
+            if self.my_rdb is None :
+                self.my_rdb = r.connect(host=self.my_configRDB['ip'], port=int(self.my_configRDB['port']), db=self.my_configRDB['base'], auth_key="", timeout=20)
+                self.my_rdb.use(self.my_configRDB['base'])
+            reponse = r.table(self.my_configRDB['table.tweets']).get(self.my_raw_tweet['id']).update(fields2update, return_changes=False).run(self.my_rdb)
+            if reponse['replaced'] == 1 :
+                logging.debug('Updated in RDB : %s | %s' % (str(Edge2AzureWorker.ourStats), str(self.my_img_analysis)))
+            else :
+                logging.critical("Tweets %d not updated in %s " % (self.my_raw_tweet['id'], self.my_configRDB['table.tweets']))
+                self.my_result_Status = 'error-update'
+                self.my_result_StatusDetails = 'Nb updates = 0 returned by RDB'
+                retour = False
+        except Exception as e :
+            self.my_result_Status = 'error-update'
+            self.my_result_StatusDetails = str(e)
+            logging.critical("Failed to update record in RDB : %s" % str(e))
+            retour = False
+        return retour
+
+    # On demarre avec start(), mais on implemente les actions dans run(). Start() de la superclass creera le thread et appelera run() dedans
+    def run(self):
+        # -- Il faut boucler sur la queue des objects a traiter, attribut de la classe
+        LoopQueue = True
+        while LoopQueue:
+            try :
+                tmpTweetTuple = Edge2AzureWorker.ourQueue.get(block=False, timeout=None)
+                tmpTweetPrio = tmpTweetTuple[0]
+                self.assignTweetFromRDB(tmpTweetTuple[1])  # Le 0 du tableau est la priorite du tweet
+            except Exception as e :
+                # Exception de Empty a la fin de la liste
+                logging.debug("Thread Queueing Exception : %s" % str(e))
+                LoopQueue = False
+                if self.my_rdb is not None :
+                    self.my_rdb.close()
+
+            if LoopQueue :
+                self.my_result_Status   = self.my_result_StatusDetails = ""
+                self.my_perf_starttime  = time.perf_counter()
+                # ---- Download + Analysis OU ALORS BYPASS ?
+                # tmpGeoT = (self.my_raw_tweet.get('tw_geo_lati', 0.0) != 0) or (self.my_raw_tweet.get('tw_geo_longi', 0) != 0)
+                # tmpTag = True if self.my_raw_tweet.get('tag1', '') != '' else False
+                # ImagePrioritaire = tmpGeoT or tmpTag
+
+                QuotaReached = False
+                Edge2AzureWorker.ourStatsLock.acquire(blocking=True, timeout=-1)
+                total_traite = Edge2AzureWorker.ourStats['nb.img.bypass'] + Edge2AzureWorker.ourStats['nb.img.analyzed']
+                if total_traite > 0 :
+                    ratio_analyzed = Edge2AzureWorker.ourStats['nb.img.analyzed'] / total_traite * 100
+                    if ratio_analyzed > int(config['edge2azure'].get('rate.of.images.to.analyze', '20')) :
+                        QuotaReached = True
+                Edge2AzureWorker.ourStatsLock.release()
+
+                # -- Si tweet prio (geospatial et/ou tag), on analyze systematiquement (sauf si quota depasse), sinon on fait un tirage au sort
+                # Pour ca, on regarde le ratio jusqu'a present
+                Toanalyze = False
+                if tmpTweetPrio < Edge2AzureWorker.ourQueueIDminiNotPrio and QuotaReached :
+                    Toanalyze = False    # EN METTANT TRUE ICI : ON ANALYSE TOUTES LES IMAGES PRIO, MEME SI QUOTA DEPASSE ATTENTION
+                elif tmpTweetPrio<Edge2AzureWorker.ourQueueIDminiNotPrio :
+                    Toanalyze = True    # Image prio et quota pas encore depasse
+                elif not QuotaReached :
+                    # Image non prio et quota ok : on tire au hasard pour savoir si on analyze
+                    if random.randint(0,99) < int(config['edge2azure'].get('rate.of.images.to.analyze', '20')) :
+                        Toanalyze = True
+
+                if Toanalyze :
+                    # Chaque tache return T ou F et rempli self.my_result_Status &  self.my_result_StatusDetails en cas d'erreur (False)
+                    if self._taskCheckInputData():                  # check pre requisites
+                        if self._taskDownloadImage():               # Download the image
+                            if self._taskSendImageToAnalysis():     # Send to analysis and collect the result
+                                self._taskInterpreteResultXML()     # Interpret the result of analysis
+                    # if not self._taskCheckInputData():            # check pre requisites
+                    #     self.my_current_state = 'error'
+                    # elif not self._taskDownloadImage():           # Download+analyze the image
+                    #     self.my_current_state = 'error'
+                    # elif not self._taskSendImageToAnalysis():     # Download+analyze the image
+                    #     self.my_current_state = 'error'
+                    # elif not self._taskInterpreteResultXML():
+                    #     self.my_current_state = 'error'
+                else :
+                    # -- BYPASS TO DECREASE LOAD : Tag "Done" Nothing found
+                    self.my_result_Status = 'bypass'
+                    self.my_result_StatusDetails = 'draw'
+
+                # ---- Update dans RDB
+                if self.my_result_Status == 'bypass' :
+                    self.my_img_analysis['analysis.result']         = 'bypass'
+                    self.my_img_analysis['analysis.result.details'] = self.my_result_StatusDetails
+                elif self.my_result_Status == 'done' :
+                    self.my_img_analysis['analysis.result']         = 'done'
+                    self.my_img_analysis['analysis.result.details'] = ''
+                elif self.my_result_Status == 'matching' :
+                    self.my_img_analysis['analysis.result']         = 'matching'
+                    self.my_img_analysis['analysis.result.details'] = ''
+                else :
+                    self.my_img_analysis['analysis.result']         = self.my_result_Status
+                    self.my_img_analysis['analysis.result.details'] = self.my_result_StatusDetails
+
+                if not self._taskUpdateRDBwithResult(new_status=int(self.my_configRDB['status.tweets.analyze.finished']), new_status_details=self.my_result_StatusDetails) :
+                    # Problem peandat update RDB
+                    self.my_img_analysis['analysis.result']         = 'error-update'
+                    self.my_img_analysis['analysis.result.details'] = self.my_result_StatusDetails
+
+                # ---- Pour le decompte des actions globale de toute la queue
+                Edge2AzureWorker.ourStatsLock.acquire(blocking=True, timeout=-1)
+                if self.my_result_Status == 'bypass' :
+                    Edge2AzureWorker.ourStats['nb.img.bypass']        += 1
+                elif self.my_result_Status == 'done' :
+                    Edge2AzureWorker.ourStats['nb.img.analyzed']      += 1
+                    Edge2AzureWorker.ourStats['nb.img.nothing.found'] += 1
+                elif self.my_result_Status == 'matching' :
+                    Edge2AzureWorker.ourStats['nb.img.analyzed']      += 1
+                    Edge2AzureWorker.ourStats['nb.img.matching']      += 1
+                else :
+                    Edge2AzureWorker.ourStats['nb.img.analyzed']      += 1
+                    Edge2AzureWorker.ourStats['nb.img.error']         += 1
+                Edge2AzureWorker.ourStatsLock.release()
+
+                # ---- Marquer la fin du traitement dans la queue : on note qu'un item sorti a ete traite, pour que le queue.join fonctionne
+                logging.debug('Image processed : %s | %s' % (str(Edge2AzureWorker.ourStats), str(self.my_img_analysis)))
+                Edge2AzureWorker.ourQueue.task_done()
+
+def get_message_kafkaconsumer(dict_params_rdb=None, queue_for_tweets=None):
+
+
+class MemCache(object):
+ 
+    def __init__(self, limit=3):
+        self.limit = limit
+        self.store = []
+ 
+    def put(self, param=None):
+        self.store.append(param)
+        if len(self.store) >= self.limit:
+            self._write_db(self.store[:self.limit])
+            self.store = self.store[self.limit:]
+ 
+    def _write_db(self, param=None):
+        print 'write to db {0}'.format(param)
+        
+class D2CMsgSender:
+    API_VERSION = '2016-02-03'
+    TOKEN_VALID_SECS = 10
+    TOKEN_FORMAT = 'SharedAccessSignature sig=%s&se=%s&skn=%s&sr=%s'
+
+    def __init__(self, connectString=None):
+        if connectString is not None:
+            iotHost, keyName, keyValue = [sub[sub.index('=') + 1:] for sub in connectString.split(";")]
+            self.iotHost = iotHost
+            self.keyName = keyName
+            self.keyValue = keyValue
+
+    def _buildExpiryOn(self):
+        return '%d' % (time.time() + self.TOKEN_VALID_SECS)
+
+    def _buildIoTHubSasToken(self, deviceId2):
+        resourceUri = '%s/devices/%s' % (self.iotHost, deviceId2)
+        targetUri = resourceUri.lower()
+        expiryTime = self._buildExpiryOn()
+        toSign = '%s\n%s' % (targetUri, expiryTime)
+        key = base64.b64decode(self.keyValue.encode('utf-8'))
+        
+        #python 3 code commented
+				#signature = urllib.parse.quote(
+        signature = urllib.pathname2url(base64.b64encode(hmac.HMAC(key, toSign.encode('utf-8'), hashlib.sha256).digest())).replace('/', '%2F')
+        
+        # signature = urllib.quote(
+        #     base64.b64encode(
+        #         hmac.HMAC(key, toSign.encode('utf-8'), hashlib.sha256).digest()
+        #     )
+        # ).replace('/', '%2F')
+        return self.TOKEN_FORMAT % (signature, expiryTime, self.keyName, targetUri)	
+
+    def sendD2CMsg(self, deviceId2, message2):
+        sasToken = self._buildIoTHubSasToken(deviceId2)
+        print sasToken
+				#print sasToken
+				url = 'https://%s/devices/%s/messages/events?api-version=%s' % (self.iotHost, deviceId2, self.API_VERSION)
+        r = requests.post(url, headers={'Authorization': sasToken}, data=message2, timeout=10)
+        return r.text, r.status_code
+
+def get_elapsed_time(in_starttime_in_second, in_end_time_in_second, in_process_step_name):
+    """Return elapsed time including hours, minutes and seconds.
+    Args:
+       in_starttime_in_second (int): elapsed time in seconds since UNIX epoch time
+       in_end_time_in_second (int): elasped time in seconds since UNIX epoch time
+       in_process_step_name (str): Nmae of process
+    Return:
+        rdd
+    """
+    duration_in_seconds = in_end_time_in_second - in_starttime_in_second
+    out_second = int(duration_in_seconds) % 60
+    minutes_amount = int(duration_in_seconds) // 60
+    out_minute = minutes_amount % 60
+    hours_amount = minutes_amount // 60
+    return "    Total elapsed time of {} : {} Hours {} Minutes {} Seconds.\n".format(in_process_step_name, hours_amount
+                                                                                     , out_minute,out_second)
+                                                                                         
+if __name__ == '__main__':
+    
+    logging.addLevelName(logging.DEBUG-2, 'DEBUG_DETAILS') 
+    # Logging, arguments pour fichier : filename='example.log', filemode='w'
+    logging.basicConfig(level=logging.INFO, datefmt="%m-%d %H:%M:%S", format="P%(process)d|T%(thread)d|%(levelname)s|%(asctime)s | %(message)s")  
+    # %(thread)d %(funcName)s L%(lineno)d
+    
+    logging.getLogger("requests").setLevel(logging.WARNING) 
+    logging.getLogger("schedule").setLevel(logging.WARNING) 
+
+    # -- PATH
+    sys.path.append('./')
+    logging.info("Starting from %s" % str(os.getcwd()))
+
+    # -- Lancement
+    config = configparser.ConfigParser()
+    config.read('./edge2azure.ini')
+		
+		# config IoT hub
+    logger.info("------ SENDING A MESSAGE TO THE IOT BUS ------")
+    connectionString = config_parser.get(APP_NAME, "azure.connection.string")
+    #logger.info(connectionString)
+    #connectionString = 'HostName=msiothub2016.azure-devices.net;SharedAccessKeyName=iothubowner;SharedAccessKey=GKXEAW1ksgIN4C1CASIVcDuHkI6V6KFD+0lxEU0gDZk='
+    #logger.info(connectionString)
+    deviceId = config_parser.get(APP_NAME, "azure.device.id")
+    #logger.info(deviceId)
+    #deviceId = 'healthc_rwriter'
+    #logger.info(deviceId)
+
+    # -- Loop on 1 Paquet of Tweets to collect from RDB
+    LoopPaquetsOfTweets = True
+    while LoopPaquetsOfTweets :
+
+        # -- Create the Queue & Fill with tweets from RDB
+        queue_of_tweets = queue.PriorityQueue(maxsize=0)
+        
+        perf0 = time.perf_counter()
+        if not get_message_kafkaconsumer(dict(config['rethinkdb']), queue_of_tweets) :
+            logging.critical("Nothing retrieved from RDB. Sleeping...")
+            duree=int(config['edge2azure'].get('sleep.seconds.when.input.bottom.reached','300'))
+            logging.info("Sleeping %d sec" % duree)
+            time.sleep(duree)
+        else:
+            nb_img_in_queue = queue_of_tweets.qsize()
+            logging.info("Retrieved %d tweets with images in %0.1f sec. Starting analyzing." % (nb_img_in_queue, time.perf_counter()-perf0))
+            
+            Edge2AzureWorker.initProcessQueue(queue_of_tweets)
+
+            try :
+                perf0 = time.perf_counter()
+                # -- Creation & lancement of workers
+                for i in range(0,int(config['edge2azure'].get('nb.sensors.in.parallel','1'))) :
+                    
+                    Edge2AzureWorker.createThread(dict_params_rdb=dict(config['rethinkdb']), dict_params_analyis=dict(config['edge2azure']))
+                    time.sleep(0.1)
+                # -- Waiting for the end
+                Edge2AzureWorker.waitFinished()
+
+            except KeyboardInterrupt :
+                logging.critical("USER BREAK : Interrupt while analyzing a group of tweets")
+                logging.critical("USER BREAK : Still %d objects to process on %d" % (nb_img_in_queue,Edge2AzureWorker.ourQueue.qsize()))
+                logging.critical("Killing threads...")
+                LoopPaquetsOfTweets = False
+
+            # ---- Faire un test global des compteurs : si trop d'erreurs, on arrete ?
+            # TODO : Policy en cas d'erreur reccurente sur le img server
+
+            # -- Paquet Analyzed : Sleeping or not ?
+            perf1 = time.perf_counter()-perf0
+            if Edge2AzureWorker.ourStats['nb.img.to.analyze'] > 0 :
+            for record in iter:
+        				# print record
+        				if record <> '':
+            		# print record
+            		json_str = json.loads(record)
+            		normalized_sensor_type_name = json_str['eventtype'].lower().strip()
+            		# Specify the correct table for insertion
+            		if normalized_sensor_type_name not in DISABLE_SENSOR_SET:
+            		
+                		try:
+                		sensor_object_dict[normalized_sensor_type_name].set_sensor(**json_str)
+                    sensor_object_dict[normalized_sensor_type_name].issue_send_IoT_hub(json.dumps)
+                		except KeyError:
+                    print "    There is NO sensor object available for this sensor type %s" % normalized_sensor_type_name
+                    
+            		else:
+                		print "    This sensor type %s is DISABLE, and SKIP .." % normalized_sensor_type_name
+                
+                d2cMsgSender = D2CMsgSender(connectionString)
+            		# logging.info("messages sent, Stats = %s" % str(Edge2AzureWorker.ourStats))
+            
+            Edge2AzureWorker.closeProcessQueue()
+
+            if LoopPaquetsOfTweets and nb_img_in_queue < int(int(config['rethinkdb'].get('nb.tweets.per.select','1000'))/2) :
+                duree=int(config['edge2azure'].get('sleep.seconds.when.input.bottom.reached','300'))
+                logging.info("Sleeping %d sec" % duree)
+                time.sleep(duree)
+            else :
+                logging.info("Analyzed %d tweets in %0.1f sec | Global Rate = %0.1f" % (nb_img_in_queue, perf1, nb_img_in_queue/perf1))
