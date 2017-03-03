@@ -1,0 +1,5 @@
+{"temperature": 33.880001, "eventtype": "skinTemperature", "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", "timestamp": 1483509690883, "trainingMode": "SITTING"}
+{"temperature": 34.0, "eventtype": "skinTemperature", "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", "timestamp": 1483509660733, "trainingMode": "SITTING"}
+{"temperature": 33.82, "eventtype": "skinTemperature", "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", "timestamp": 1483509720924, "trainingMode": "SITTING"}
+{"temperature": 33.82, "eventtype": "skinTemperature", "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", "timestamp": 1483509720910, "trainingMode": "SITTING"}
+{"temperature": 33.950001, "eventtype": "skinTemperature", "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", "timestamp": 1483509630664, "trainingMode": "NONE"}
