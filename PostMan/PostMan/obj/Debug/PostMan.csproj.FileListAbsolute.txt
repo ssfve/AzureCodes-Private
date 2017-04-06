@@ -26,3 +26,16 @@ C:\Users\yinlin\Documents\GitHub\AzureCodes\PostMan\PostMan\obj\Debug\PostMan.pd
 C:\Users\yinlin\Documents\GitHub\AzureCodes\PostMan\PostMan\obj\Debug\PostMan.csprojResolveAssemblyReference.cache
 C:\Users\yinlin\Documents\GitHub\AzureCodes\PostMan\PostMan\obj\Debug\PostMan.MainForm.resources
 C:\Users\yinlin\Documents\GitHub\AzureCodes\PostMan\PostMan\obj\Debug\PostMan.csproj.GenerateResource.Cache
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\PostMan.exe.config
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\obj\Debug\PostMan.exe
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\obj\Debug\PostMan.pdb
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\obj\Debug\PostMan.MainForm.resources
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\obj\Debug\PostMan.csproj.GenerateResource.Cache
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\heartRate.json
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\rrinterval.json
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\skinTemperature.json
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\PostMan.exe
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\PostMan.pdb
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\Newtonsoft.Json.pdb
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\bin\Debug\Newtonsoft.Json.xml
+C:\Users\Elvin Lin\Documents\Github\AzureCodes-Private\PostMan\PostMan\obj\Debug\PostMan.csprojResolveAssemblyReference.cache
