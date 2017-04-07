@@ -1,12 +1,16 @@
 import logging, cherrypy, os
-import time, datetime
+import time
+#import datetime
 import json
 import threading
 import requests
-import base64
-import hmac
+from base64 import b64decode,b64encode
+from hmac import HMAC
 import hashlib
-import urllib
+from hashlib import sha256
+#from urllib import urlencode
+#from urllib import quote_plus
+from urllib import pathname2url
 #import urllib.parse
 
 # ----- Class that contains the generic methods for websites (user check, error messages)
@@ -36,9 +40,11 @@ class WebServerBase:
 
 # ----- Class used to communicate with MS Azure IoT Hub
 class D2CMsgSender:
-    API_VERSION = '2016-02-03'
+    #API_VERSION = '2016-02-03'
+    API_VERSION = '2016-11-14'
     TOKEN_VALID_SECS = 10
-    TOKEN_FORMAT = 'SharedAccessSignature sig=%s&se=%s&skn=%s&sr=%s'
+    #TOKEN_FORMAT = 'SharedAccessSignature sr=%s&sig=%s&se=%s'
+    TOKEN_FORMAT = 'SharedAccessSignature sr=%s&sig=%s&se=%s&skn=%s'
 
     def __init__(self, connectString=None):
         if connectString is not None:
@@ -51,35 +57,89 @@ class D2CMsgSender:
         return '%d' % (time.time() + self.TOKEN_VALID_SECS)
 
     def _buildIoTHubSasToken(self, deviceId2):
+        
         resourceUri = '%s/devices/%s' % (self.iotHost, deviceId2)
         targetUri = resourceUri.lower()
         expiryTime = self._buildExpiryOn()
         toSign = '%s\n%s' % (targetUri, expiryTime)
-        key = base64.b64decode(self.keyValue.encode('utf-8'))
-        #signature = urllib.parse.quote(
-        signature = urllib.pathname2url(
-            base64.b64encode(
-                hmac.HMAC(key, toSign.encode('utf-8'), hashlib.sha256).digest()
-            )
-        ).replace('/', '%2F')
+        key = b64decode(self.keyValue.encode('utf-8'))
+        
+        #python 3 code commented
+        signature = pathname2url(b64encode(HMAC(key, toSign.encode('utf-8'), sha256).digest())).replace('/', '%2F')
+
         # signature = urllib.quote(
         #     base64.b64encode(
         #         hmac.HMAC(key, toSign.encode('utf-8'), hashlib.sha256).digest()
         #     )
         # ).replace('/', '%2F')
-        return self.TOKEN_FORMAT % (signature, expiryTime, self.keyName, targetUri)
+        return self.TOKEN_FORMAT % (targetUri, signature, expiryTime, self.keyName) 
+        """
+        sasToken = 'SharedAccessSignature sr=itr2-iothub.azure-devices.net%2Fdevices%2Fitr2-data&sig=nbfex4r7MwYD0th%2FgAdDr8ub5C8fAjRb0VdhuB6Hkog%3D&se=1488882250'
+        print("%s" % sasToken)
+        
+        
+        resourceUri = '%s/devices/%s' % (self.iotHost, deviceId2)
+        print("resourceUri is {0}").format(resourceUri)
+        
+        #targetUri = resourceUri.lower()
+        # Lower case URL-encoding of the lower case resource URI
+        #targetUri = resourceUri.lower().replace('/', '%2f')
+        #print("targetUri is {0}").format(targetUri)
+        #targetUri = quote_plus(resourceUri)
+        #print("targetUri is {0}").format(targetUri)
+        
+        #expiryTime = self._buildExpiryOn()
+        ttl = time.time() + 3600
+        print("{0}").format(ttl)
+        ttl = 1488882250        
+        print("{0}").format(ttl)
+        key = self.keyValue
+        sign_key = "%s\n%d" % ((quote_plus(resourceUri)), int(ttl).encode("utf-8"))
+        print("{0}").format(sign_key)
+        signature = b64encode(HMAC(b64decode(key), sign_key, sha256).digest())
 
+        rawtoken = {
+            'sr' :  resourceUri,
+            'sig': signature,
+            'se' : str(int(ttl))
+            }
+
+        return 'SharedAccessSignature ' + urlencode(rawtoken)
+        #print("%s" % signature)
+        # signature = urllib.quote(
+        #     base64.b64encode(
+        #         hmac.HMAC(key, toSign.encode('utf-8'), hashlib.sha256).digest()
+        #     )
+        # ).replace('/', '%2F')
+        
+        #return sasToken
+        #return self.TOKEN_FORMAT % (targetUri, signature, expiryTime, self.keyName)
+        """
     def sendD2CMsg(self, deviceId2, message2):
         sasToken = self._buildIoTHubSasToken(deviceId2)
+        #print("%s" % sasToken)
+        
         url = 'https://%s/devices/%s/messages/events?api-version=%s' % (self.iotHost, deviceId2, self.API_VERSION)
-        r = requests.post(url, headers={'Authorization': sasToken}, data=message2, timeout=10)
+        #print("%s" % url)
+        
+        # sasToken for iothub
+        #sasToken = 'SharedAccessSignature sr=itr2-iothub.azure-devices.net&sig=n5YYnBT3%2Fmti4MkzD%2FEaGwpyRVx4BChxOEzAAXg1hLE%3D&se=1520418134&skn=iothubowner'
+        # sasToken for device
+        #sasToken = 'SharedAccessSignature sr=itr2-iothub.azure-devices.net%2Fdevices%2Fitr2-data&sig=nbfex4r7MwYD0th%2FgAdDr8ub5C8fAjRb0VdhuB6Hkog%3D&se=1488882250'
+        #print("%s" % sasToken)
+        
+        # need proxy to work
+        #proxies = {'http': 'web-proxy.rose.hpecorp.net:8080', 'https': 'web-proxy.rose.hpecorp.net:8080'}
+        #sasToken = 'SharedAccessSignature sr=itr2-iothub.azure-devices.net%2Fdevices%2Fitr2-data&sig=ZzC4yXX5fAHFEM5JNfPSkNJtkDQY1OnejnOToHmyihc%3D&se=1488885609'        
+        proxies = {'http': 'web-proxy.cup.hp.com:8080', 'https': 'web-proxy.cup.hp.com:8080'}
+        r = requests.post(url, headers={'Authorization': sasToken, 'Content-Type': 'application/json'}, proxies=proxies, data=message2, timeout=10)
         return r.text, r.status_code
 
 # ----- Class containing the code in charge of processing the json data
 class HCareAzureCollector(object):
     ourBufferLock        = threading.Lock()
     ourBufferTimeCounter = 0.0
-    ourBufferDuration    = 45                 # NUMBER OF SECONDS TO BUFFERIZE BEFORE SENDING TO IOT HUB
+    ourBufferDuration    = 10                 # NUMBER OF SECONDS TO BUFFERIZE BEFORE SENDING TO IOT HUB
     ourBufferData        = dict()               # Data bufferized : ourBufferData['key1=UserID']['key2=EventType'] = list of event_data
 
     def __init__(self):
@@ -88,24 +148,33 @@ class HCareAzureCollector(object):
     # -- This function will stack (accumulate) the data in a list part of a dict()
     @staticmethod
     #def add_event_to_buffer(deviceID="", eventName="", eventData=None, trainingMode="none"):
-	def add_event_to_buffer(deviceID="", eventName="",trainingMode="none"):
+    def add_event_to_buffer(deviceID="", eventName="",eventData=None, trainingMode="none"):
         #if len(deviceID)>1 and len(eventName)>1 and len(eventData) > 0 :
-		if len(deviceID)>1 and len(eventName)>1 and len(eventData) > 0 :
+        if (len(deviceID)>1 and len(eventName)>1 and len(eventData)>0):
             # -- Locking the variable for multithread access
-            HCareAzureCollector.ourBufferLock.acquire(blocking=True, timeout=-1)
-
+            #python 3.0 feature keyword argument 
+            #HCareAzureCollector.ourBufferLock.acquire(blocking=True, timeout=-1)
+            #HCareAzureCollector.ourBufferLock.acquire(True, -1)
+            HCareAzureCollector.ourBufferLock.acquire(-1)
+            
             # Adding the event data in the list() of the event type for this deviceID
             buffer_deviceID  = HCareAzureCollector.ourBufferData.get(deviceID) or dict()
+            
+            
             buffer_eventName = buffer_deviceID.get(eventName) or list()
-
+            
+            
             # --- ADDING THE EVENT DATA TO THE BUFFER IN MEMORY
             # @JOJO : Here nothing to do if you want to add every event to the buffer
+            # timestamp is in eventData
             buffer_eventName.append(dict(eventData))  # eventData is sent with a pointer, hence needed to duplicate the instance for buffer.
             # buffer_eventName = [dict(eventData)]  # TO KEEP ONLY THE LAST EVENT, NO BUFFERING
-
+    
             buffer_deviceID[eventName] = buffer_eventName
+            #print ("buffer_eventName %s in buffer" % buffer_eventName)
+            
             HCareAzureCollector.ourBufferData[deviceID] = buffer_deviceID
-
+            #print ("deviceID %s in buffer" % buffer_deviceID)
             # -- Unlocking the variable for threading
             HCareAzureCollector.ourBufferLock.release()
 
@@ -114,68 +183,83 @@ class HCareAzureCollector(object):
     def flush_buffer_to_iot_hub_if_needed():
         retour = False
         # -- Locking the variable for multithread access
-        HCareAzureCollector.ourBufferLock.acquire(blocking=True, timeout=-1)
-
-        if HCareAzureCollector.ourBufferTimeCounter == 0.0 :
+        #python 3.0 feature keyword argument 
+        #HCareAzureCollector.ourBufferLock.acquire(blocking=True, timeout=-1)
+        #HCareAzureCollector.ourBufferLock.acquire(True, -1)
+        HCareAzureCollector.ourBufferLock.acquire(-1)
+        
+        if HCareAzureCollector.ourBufferTimeCounter == 0.0:
             # -- If this is the 1st time the function is called, initialization of duration counter
-            HCareAzureCollector.ourBufferTimeCounter = time.perf_counter()
+            #HCareAzureCollector.ourBufferTimeCounter = time.perf_counter()
+            HCareAzureCollector.ourBufferTimeCounter = time.time()
             retour = False
 
-        elif (time.perf_counter() - HCareAzureCollector.ourBufferTimeCounter) > HCareAzureCollector.ourBufferDuration :
+        #elif (time.perf_counter() - HCareAzureCollector.ourBufferTimeCounter) > HCareAzureCollector.ourBufferDuration :
+        elif (time.time() - HCareAzureCollector.ourBufferTimeCounter) > HCareAzureCollector.ourBufferDuration:
             # -- HERE IT IS TIME TO FLUSH THE DATA !!
             #print("====== FLUSHING BUFFER (sending to IOT HUB) ======")
+            
+            #===========================================================
+            # Very Important Azure Settings
+            #============================================================
             #AzureConnectionString = 'HostName=msiothub2016.azure-devices.net;SharedAccessKeyName=iothubowner;SharedAccessKey=GKXEAW1ksgIN4C1CASIVcDuHkI6V6KFD+0lxEU0gDZk='
             AzureConnectionString = 'HostName=itr2-iothub.azure-devices.net;SharedAccessKeyName=iothubowner;SharedAccessKey=LVfyxq2bQ0ewlhtFW9bRyBUzHOv6RoI3db1VuvPkUUo='
             #AzuredeviceId = 'iot4hc_azure_collector'
             AzuredeviceId = 'itr2-data'
-            for buf_device in HCareAzureCollector.ourBufferData.keys() :
+            
+            for buf_device in HCareAzureCollector.ourBufferData.keys():
                 events_sent = events_not_sent = ""
-                events_to_send = ['tracking', 'heartrate', 'barometer', 'ambientlight', 'skintemperature', 'uv']
+                events_to_send = ['tracking', 'heartrate', 'barometer', 'ambientlight', 'skintemperature', 'uv', 'rrinterval']
                 # print('Buffer for DeviceID = %s' % buf_device)
-                for buf_eventtype in HCareAzureCollector.ourBufferData.get(buf_device).keys() :
-                    if buf_eventtype in events_to_send :
-                        buf_measures = HCareAzureCollector.ourBufferData.get(buf_device).get(buf_eventtype)
-                        nb_mesures   = len(buf_measures)
-                        last_measure = buf_measures.pop()
-                        json_object  = dict(last_measure)
-                        json_object['AzureDeviceId'] = 'iot4hc_azure_collector'
-                        json_object['SensorID']      = buf_device
-                        json_object['MeasureType']   = buf_eventtype
+                for buf_eventtype in HCareAzureCollector.ourBufferData.get(buf_device).keys():
+                    if buf_eventtype in events_to_send:
+                        
+                        #print("processing %s record" % buf_eventtype)
+                        
+                        buf_records = HCareAzureCollector.ourBufferData.get(buf_device).get(buf_eventtype)
+                        nb_records   = len(buf_records)
+                        #last_record = buf_records.pop()
+                        
+                        # json is dict
+                        #json_object  = dict(last_measure)
+                        #[event_id],[device_type],[device_id],[event_type],[time_stamp],[user_id],[training_mode],[interval]
 
-                        # print('- Sending to IOT HuB : %s' % json_object)
-                        d2cMsgSender = D2CMsgSender(AzureConnectionString)
-                        message = json.dumps(json_object)
-                        (RetStr, RetCode) = d2cMsgSender.sendD2CMsg(AzuredeviceId, message)
-                        if RetCode != 204 :
-                            logging.error('Problem sending to IOT HuB : %d | %s' % (RetCode, RetStr))
+                        nb_measures = 0
+                        for record in buf_records :
+                            nb_measures += 1
+                            json_object = dict(record)
+                            json_object['event_id'] = 'itr2'
+                        #   json_object['MeasureType']  = 'tracking'
+                        #   print('- Sending to IOT HuB : %s' % json_object)                    
 
-                        # nb_mesures = 0
-                        # for measure in buf_measures :
-                        #     nb_mesures += 1
-                        #     json_object = dict(measure)
-                        #     json_object['SensorID']     = buf_device
-                        #     json_object['MeasureType']  = 'tracking'
-                        #     print('- Sending to IOT HuB : %s' % json_object)
-
-
-                        events_sent += "%s(1 on %d);" % (buf_eventtype, nb_mesures)
-                    else :
+                            # print('- Sending to IOT HuB : %s' % json_object)
+                            d2cMsgSender = D2CMsgSender(AzureConnectionString)
+                            message = json.dumps(json_object)
+                            logging.info('json message %s sent to iothub' % buf_eventtype)
+                            #logging.info('%s' % message)
+                            (RetStr, RetCode) = d2cMsgSender.sendD2CMsg(AzuredeviceId, message)
+                            if RetCode != 204 :
+                                logging.error('Problem sending to IOT HuB : %d | %s' % (RetCode, RetStr))
+    
+                            events_sent += "%s(%d on %d);" % (buf_eventtype, nb_measures, nb_records)
+                        
+                    else:
                         events_not_sent += "%s(%d);" % (buf_eventtype, len(HCareAzureCollector.ourBufferData.get(buf_device).get(buf_eventtype) or []))
-                print("== FLUSHED TO IOT HUB | Device %s : sent = %s | not sent = %s" % (buf_device, events_sent, events_not_sent))
+                print("== FLUSHED TO IOT HUB | Device %s : sent = %s | not sent = %s" % (buf_device, events_sent, events_not_sent or "nil(0 on 0);"))
 
             # HERE WE ARE RESETING THE BUFFER
             HCareAzureCollector.ourBufferData = dict()
 
             # Updating the time counter as buffer is now empty
-            HCareAzureCollector.ourBufferTimeCounter = time.perf_counter()
+            #HCareAzureCollector.ourBufferTimeCounter = time.perf_counter()
+            print("resetting timer for next flush")
+            HCareAzureCollector.ourBufferTimeCounter = time.time()
             retour = True
 
         # -- Unlocking the variable for threading
+        logging.info("buffer is not full waiting for new msgs")
         HCareAzureCollector.ourBufferLock.release()
         return retour
-
-
-
 
 
     # ----- This method will handle the http request : a json is awaited in POST parameters
@@ -186,151 +270,140 @@ class HCareAzureCollector(object):
     #def hpeiot4hc(self, **argv):
     def hpeiot4hc(self):
         retourObj = dict()
-	#print argv
-	#print type(self)
-	data = cherrypy.request.json
-        if not data:
+        #print argv
+        #print type(self)
+        json_collected = cherrypy.request.json
+        
+        # check buffer whenever a json msg is received
+        # the function will acquire a lock
+        HCareAzureCollector.flush_buffer_to_iot_hub_if_needed()
+        
+        # only after the buffer checking new json message will be processed
+        if not json_collected:
             # -- Here a web request is handled but the POST parameters are empty
             logging.warning("Web request without data received.")
-        elif type(data) is not dict :
+        elif type(json_collected) is not dict :
             # -- Here a web request is handled but the POST parameters are not a json  (dict() type in python)
-            logging.warning("Web request with bad data type %s instead of dict" % str(type(data)))
-        else :
+            logging.warning("Web request with bad data type %s instead of dict" % str(type(json_collected)))
+        else:
             # -- Here a web request is handled with a json object in parameters
-            if len(data) == 1 :
+            if len(json_collected) == 1:
                 # -- Here a web request is handled with a json that is not structured like the one sent by the mobile app
                 logging.warning("Web request with json not encapsulated")
-            else :
+            else:
                 # -- Here extraction of the json sent by the mobile app : it is encapsulated in the key of the unique object in the dict received
                 #json_collected_string = argv.popitem()[0]
-		json_collected_string = data
-                print json_collected_string
-		json_collected = json.loads(json_collected_string)
-		
+                #print(" type of data is %s" % type(data))
+                #json_collected = json.loads(json_collected_string)
+                
+                # data received is a dict
+                #json_collected = data
+                
                 # for root_key in json_collected.keys() :
                 #     print("K | V = %s | %s" % (str(root_key), str(json_collected.get(root_key) or "")))
-				
-                deviceID    = json_collected.get('deviceID')    or ""
-                userID      = json_collected.get('userID')      or ""
+                event_payload                 = dict()
+                print("%s" % json_collected)
+                # the msg received is utf-8
+                deviceID    = json_collected.get('deviceid')    or ""
+                #print("deviceID received is %s" % deviceID)
+                event_payload['device_id']      = deviceID
+                event_payload['device_type']    = 'itr2-band'
+
+                userID      = json_collected.get('userid')      or ""
+                #print("userID received is %s" % deviceID)
+                event_payload['user_id']      = userID 
                 #events      = json_collected.get('events')      or list()
-                macaddress  = (json_collected.get('macAddress') or "00:00:00:00:00:00").lower()
-                gpslocation = json_collected.get('locationOfHandheld') or {'longitude': '0.0', 'latitude': '0.0'}
-				
+                #macaddress  = (json_collected.get('macAddress') or "00:00:00:00:00:00").lower()
+                #gpslocation = json_collected.get('locationOfHandheld') or {'longitude': '0.0', 'latitude': '0.0'}
+                
                 if not(len(deviceID) > 1 and len(userID) > 1) :
                     logging.warning("Web request with json without deviceID or userID or empty event list")
-                else :
+                else:
                     # --- Status data = keep alive data
-                    ts_utc_epoch = int(time.time()) # epoch time UTC as a float
-                    ts_utc_iso   = datetime.datetime.utcfromtimestamp(ts_utc_epoch).isoformat()
+                    
+                    #================================================================
+                    # tracking is not needed for now
+                    #==============================================================
+                    #ts_utc_epoch = int(time.time()) # epoch time UTC as a float
+                    #ts_utc_iso   = datetime.datetime.utcfromtimestamp(ts_utc_epoch).isoformat()
                     #print("- %s Reception of %d events from %s | %s | %s | %s" % (ts_utc_iso, len(events), userID, deviceID, macaddress, str(gpslocation)))
-                    tracking_data                 = dict()
-                    tracking_data['userID']       = userID
-                    tracking_data['macaddr']      = macaddress
-                    tracking_data['longitude']    = float(gpslocation['longitude'])
-                    tracking_data['latitude']     = float(gpslocation['latitude'])
-                    tracking_data['ts_utc_epoch'] = ts_utc_epoch
-                    tracking_data['ts_utc_iso']   = ts_utc_iso
-                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName='tracking', eventData=tracking_data, trainingMode='none')
+                    #tracking_data                 = dict()
+                    #tracking_data['userID']       = userID
+                    #tracking_data['macaddr']      = macaddress
+                    #tracking_data['longitude']    = float(gpslocation['longitude'])
+                    #tracking_data['latitude']     = float(gpslocation['latitude'])
+                    #tracking_data['ts_utc_epoch'] = ts_utc_epoch
+                    #tracking_data['ts_utc_iso']   = ts_utc_iso
+                    #HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName='tracking', eventData=tracking_data, trainingMode='none')
 
                     # --- Buffering events = health measures
                     #for evt in events :
-                        event_timestamp            = json_collected.get('timeStamp') or int(0)
-                        event_type                 = (json_collected.get('eventType') or "").lower()
-                        event_trainingMode         = (json_collected.get('trainingMode') or "none").lower()
-						event_data				   =dict()
-                        #event_data                 = json_collected.get('data') or dict()
+                    # one json record received at a time
+                    # json_collected is a dict()
+                    # {"eventtype": "rrinterval", "interval": 0.8296, "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", \
+                    # "timestamp": 1483509624653, "trainingMode": "SITTING"}
+                    event_timestamp            = json_collected.get('timestamp') or int(0)
+                    #print("timestamp received is %s" % event_timestamp)
+                    event_payload['time_stamp']   = event_timestamp
+                    
+                    event_type                 = (json_collected.get('eventtype') or "").lower()
+                    event_payload['event_type']   = event_type
 
-                        #if not(len(event_type)>1 and event_timestamp>0 and len(event_data)>0) :
-						if not(len(event_type)>1 and event_timestamp>0) :
-                            logging.warning("Events from %s|%s cannot be parsed" % (userID,deviceID))
-                        else :
-                            # ------------ HERE WE ARE LOOPING ON THE EVENTS --------------
-                            ts_measure                    = int(event_timestamp/1000)
-                            event_payload                 = dict()
-                            event_payload['ts_utc_epoch'] = ts_measure
-                            event_payload['ts_utc_iso']   = datetime.datetime.utcfromtimestamp(ts_measure).isoformat()
-                            # print("EVENT : %d | %s | %s | %s" % (event_timestamp, event_type, str(event_data), str(event_trainingMode)))
-                            try :
-                                if event_type == "heartrate" :  # example of event_data = {'rate': 73, 'quality': 1}
-                                    event_payload['heartrate_value']   = int(json_collected['rate'])
-                                    event_payload['heartrate_quality'] = int(json_collected['quality'])
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
-                                elif event_type == "barometer" : # example of event_data = {'temperature': 35.145833, 'airPressure': 994.240723}
-                                    event_payload['baro_airtemperature'] = float(json_collected['temperature'])
-                                    event_payload['baro_airpressure']    = float(json_collected['airPressure'])
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
-                                elif event_type == "ambientlight" : # example of event_data = {'brightness': 45}
-                                    event_payload['brightness'] = int(json_collected['brightness'])
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
-                                elif event_type == "skintemperature" : # example of event_data = {'temperature': 31.09}
-                                    event_payload['skintemperature'] = float(json_collected['temperature'])
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
-                                elif event_type == "uv" : # example of event_data = {'index': 0}
-                                    event_payload['uv'] = int(json_collected['index'])
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
+                    event_trainingMode         = (json_collected.get('trainingMode') or "none").lower()
+                    event_payload['training_mode']   = event_trainingMode
+                    
+                    #event_data		       = dict()
+                    #event_data                 = json_collected.get('data') or dict()
 
-
-                                elif event_type == "gyroscope" :
-                                    # example of event_data = {'x': -0.579268, 'z': -0.823171, 'y': -0.060976}
-									event_data['x']   = json_collected['x']
-									event_data['z']   = json_collected['z']
-									event_data['y']   = json_collected['y']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "accelerometer" :
-                                    # example of event_data = {'x': 0.513672, 'z': 0.842285, 'y': 0.063477}
-									event_data['x']   = json_collected['x']
-									event_data['z']   = json_collected['z']
-									event_data['y']   = json_collected['y']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "rrinterval" :
-                                    # example of event_data = {'interval': 0.730048}
-									event_data['interval']   = json_collected['interval']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "altimeter" :
-                                    # example of event_data = {'rate': -19.0, 'stepsDescended': 428, 'totalGain': 373506, 'steppingGain': 2175, 'stepsAscended': 512, 'flightsDescended': 4, 'totalLoss': 377450, 'flightsAscended': 5, 'steppingLoss': 1807}
-                                    event_data['rate']   = json_collected['rate']
-									event_data['stepsDescended']   = json_collected['stepsDescended']
-									event_data['totalGain']   = json_collected['totalGain']
-									event_data['steppingGain']   = json_collected['steppingGain']
-									event_data['stepsAscended']   = json_collected['stepsAscended']
-									event_data['flightsDescended']   = json_collected['flightsDescended']
-									event_data['totalLoss']   = json_collected['totalLoss']
-									event_data['flightsAscended']   = json_collected['flightsAscended']
-									event_data['steppingLoss']   = json_collected['steppingLoss']
-									# VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "distance" :
-                                    # example of event_data = {'totalDistance': 153232, 'currentMotion': 1, 'speed': 0.0, 'pace': 0.0}
-									event_data['totalDistance']   = json_collected['totalDistance']
-									event_data['currentMotion']   = json_collected['currentMotion']
-									event_data['speed']   = json_collected['speed']
-									event_data['pace']   = json_collected['pace']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "pedometer" :
-                                    # example of event_data = {'totalSteps': 2064}
-									event_data['totalSteps']   = json_collected['totalSteps']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "calorie" :
-                                    # example of event_data = {'calories': 27584}
-									event_data['calories']   = json_collected['calories']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                elif event_type == "contact" :
-                                    # example of event_data = {'state': 1}
-									event_data['state']   = json_collected['state']
-                                    # VALUE TO BE PARSED, VERIFIED, ETC...
-                                    HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_data, trainingMode=event_trainingMode)
-                                else :
-                                    logging.warning("Event type received and not interpreted : %s | %s" % (event_type, str(event_data)))
-                            except Exception as e :
-                                logging.warning('Exception parsing event %s : %s' % (event_type, str(e)))
+                    #if not(len(event_type)>1 and event_timestamp>0 and len(event_data)>0) :
+                    if not (len(event_type) > 1 and event_timestamp > 0):
+                        logging.warning("Events from %s|%s cannot be parsed" % (userID,deviceID))
+                    else:
+                        # ------------ HERE WE ARE LOOPING ON THE EVENTS --------------
+                        #ts_measure                    = int(event_timestamp/1000)
+                        
+                        #event_type = event_type.encode('utf-8')
+                        
+                        #event_payload['ts_utc_epoch'] = ts_measure
+                        #event_payload['ts_utc_iso']   = datetime.datetime.utcfromtimestamp(ts_measure).isoformat()
+                        # print("EVENT : %d | %s | %s | %s" % (event_timestamp, event_type, str(event_data), str(event_trainingMode)))
+                        try:
+                            # {"temperature": 31.959999, "eventtype": "skinTemperature", "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", \
+                            # "timestamp": 1483509720783, "trainingMode": "WALKING"}
+                            # {"eventtype": "heartRate", "userid": "vincent.planat@hpe.com", "rate": "69", "deviceid": "b81e905908354542", \
+                            # "timestamp": 1483509453251, "trainingMode": "NONE", "quality": 1}
+                            # {"eventtype": "rrinterval", "interval": 0.8296, "userid": "vincent.planat@hpe.com", "deviceid": "b81e905908354542", \
+                            # "timestamp": 1483509624653, "trainingMode": "SITTING"}
+                            if event_type == u'heartrate':  # example of event_data = {'rate': 73, 'quality': 1}
+                                
+                                logging.info("heartrate record -> buffer")
+                                #event_payload['heartrate_value']   = int(json_collected['rate'])
+                                #event_payload['heartrate_quality'] = int(json_collected['quality'])
+                                event_payload['rate']   = int(json_collected['rate'])
+                                event_payload['quality'] = int(json_collected['quality'])
+                                HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
+                                
+                            elif event_type == u'skintemperature': # example of event_data = {'temperature': 31.09}
+                                
+                                logging.info("skintemperature record -> buffer")
+                                #event_payload['skintemperature'] = float(json_collected['temperature'])
+                                event_payload['temperature'] = float(json_collected['temperature'])
+                                HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
+                                
+                            elif event_type == u'rrinterval':
+                                # example of event_data = {'interval': 0.730048}
+                                logging.info("rrinterval record  -> buffer")
+                                event_payload['interval']   = float(json_collected['interval'])
+                                # VALUE TO BE PARSED, VERIFIED, ETC...
+                                HCareAzureCollector.add_event_to_buffer(deviceID=deviceID, eventName=event_type, eventData=event_payload, trainingMode=event_trainingMode)
+                                
+                            else:
+                                logging.warning("Event type received but not interpreted : %s | %s" % (event_type, str(event_payload)))
+                                
+                        except Exception as e :
+                            logging.warning('Exception parsing event %s : %s' % (event_type, str(e)))
                     # Checking if it is time to flush the buffer
-                    HCareAzureCollector.flush_buffer_to_iot_hub_if_needed()
+                    #HCareAzureCollector.flush_buffer_to_iot_hub_if_needed()
 
             # contenu  = "Type   = %s\n" % type(argv)
             # contenu += "Length = %s\n\n" % len(argv)
